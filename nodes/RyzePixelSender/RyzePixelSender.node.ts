@@ -248,7 +248,7 @@ export class RyzePixelSender implements INodeType {
 					});
 				} else if (
 					Number(existing.amount) === Number(item.amount) &&
-					existing.parent_api_call === item.parent_api_call
+					(existing.parent_api_call || 'Empty') === (item.parent_api_call || 'Empty')
 				){
 					// EXACT DUPLICATE - trx_id and amount match (commission_amount ignored)
 					processedItems.push({
