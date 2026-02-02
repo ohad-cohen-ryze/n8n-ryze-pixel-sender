@@ -26,6 +26,7 @@ interface ExistingRecord {
 	trx_id: string;
 	amount: number;
 	commission_amount: number;
+	parent_api_call: string | null;
 	created_at: Date;
 }
 
@@ -221,7 +222,7 @@ export class RyzePixelSender implements INodeType {
 				// Batch query for all trx_ids
 				const trxIds = deduplicatedItems.map(item => item.trx_id);
 				const [rows] = await connection.execute(
-					`SELECT trx_id, amount, commission_amount, created_at
+					`SELECT trx_id, amount, commission_amount, parent_api_call, created_at
 					FROM scraper_tokens
 					WHERE trx_id IN (${trxIds.map(() => '?').join(',')})`,
 					trxIds
@@ -245,7 +246,10 @@ export class RyzePixelSender implements INodeType {
 						status: 'new',
 						action: 'send_to_pixel',
 					});
-				} else if (Number(existing.amount) === Number(item.amount)) {
+				} else if (
+					Number(existing.amount) === Number(item.amount) &&
+					existing.parent_api_call === item.parent_api_call
+				){
 					// EXACT DUPLICATE - trx_id and amount match (commission_amount ignored)
 					processedItems.push({
 						item,
@@ -281,8 +285,8 @@ export class RyzePixelSender implements INodeType {
 					logger.info('[Ryze Pixel Sender] Updated Items Details:');
 					updatedItems.forEach((p, idx) => {
 						logger.info(`[Ryze Pixel Sender]   ${idx + 1}. ${p.item.trx_id}`);
-						logger.info(`[Ryze Pixel Sender]      OLD: amount=$${p.existing!.amount}, commission=$${p.existing!.commission_amount}`);
-						logger.info(`[Ryze Pixel Sender]      NEW: amount=$${p.item.amount}, commission=$${p.item.commission_amount}`);
+						logger.info(`[Ryze Pixel Sender]      OLD: amount=$${p.existing!.amount}, commission=$${p.existing!.commission_amount}, parent_api_call=${p.existing!.parent_api_call || 'null'}`);
+						logger.info(`[Ryze Pixel Sender]      NEW: amount=$${p.item.amount}, commission=$${p.item.commission_amount}, parent_api_call=${p.item.parent_api_call}`);
 						logger.info(`[Ryze Pixel Sender]      First seen: ${p.existing!.created_at.toISOString().split('T')[0]}`);
 					});
 				}
@@ -394,12 +398,13 @@ export class RyzePixelSender implements INodeType {
 							p.item.trx_id,
 							p.item.amount,
 							p.item.commission_amount,
+							p.item.parent_api_call,
 							'scraper',
 						]);
 
 						await connection.execute(
-							`INSERT INTO scraper_tokens (trx_id, amount, commission_amount, stream, created_at)
-							VALUES ${values.map(() => '(?, ?, ?, ?, NOW())').join(', ')}`,
+							`INSERT INTO scraper_tokens (trx_id, amount, commission_amount,parent_api_call, stream, created_at)
+							VALUES ${values.map(() => '(?, ?, ?, ?, ?, NOW())').join(', ')}`,
 							values.flat()
 						);
 
@@ -411,9 +416,9 @@ export class RyzePixelSender implements INodeType {
 						for (const p of existingToUpdate) {
 							await connection.execute(
 								`UPDATE scraper_tokens
-								SET amount = ?, commission_amount = ?, created_at = NOW()
+								SET amount = ?, commission_amount = ?, parent_api_call = ?, created_at = NOW()
 								WHERE trx_id = ?`,
-								[p.item.amount, p.item.commission_amount, p.item.trx_id]
+								[p.item.amount, p.item.commission_amount, p.item.parent_api_call, p.item.trx_id]
 							);
 							dbUpdated++;
 						}
@@ -486,6 +491,8 @@ export class RyzePixelSender implements INodeType {
 						new_amount: p.item.amount,
 						old_commission: p.existing!.commission_amount,
 						new_commission: p.item.commission_amount,
+						old_parent_api_call: p.existing!.parent_api_call,
+						new_parent_api_call: p.item.parent_api_call,
 					} : undefined,
 				})),
 			},
