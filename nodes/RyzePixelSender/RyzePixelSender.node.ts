@@ -185,11 +185,11 @@ export class RyzePixelSender implements INodeType {
 			});
 		}
 
-		// Deduplicate input items by trx_id (keep last occurrence)
+		// Deduplicate input items by trx_id (case-insensitive, keep last occurrence)
 		const deduplicatedItems: InputItem[] = [];
 		const seenTrxIds = new Map<string, InputItem>();
 		for (const item of inputItems) {
-			seenTrxIds.set(item.trx_id, item);
+			seenTrxIds.set(item.trx_id.toLowerCase(), item);
 		}
 		deduplicatedItems.push(...seenTrxIds.values());
 
@@ -237,7 +237,9 @@ export class RyzePixelSender implements INodeType {
 
 			// Process each item
 			for (const item of deduplicatedItems) {
-				const existing = existingRecords.find(row => row.trx_id === item.trx_id);
+				const existing = existingRecords.find(
+					row => row.trx_id.toLowerCase() === item.trx_id.toLowerCase(),
+				);
 
 				if (!existing) {
 					// NEW - No record exists
